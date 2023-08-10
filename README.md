@@ -2,3 +2,4 @@
 
 * tldr
 * fzf
+* tmux
