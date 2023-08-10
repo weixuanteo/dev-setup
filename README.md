@@ -3,3 +3,4 @@
 * tldr
 * fzf
 * tmux
+* zsh-autosuggestions (requires zsh shell)
