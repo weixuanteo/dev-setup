@@ -1,0 +1,10 @@
+# Edit gitconfig
+# git config --global --edit
+
+[alias]
+# taken from https://github.com/mrnugget/dotfiles/blob/c4624ed521d539856bcf764f04a295bb19093566/gitconfig#L13-L17
+l = "!. ~/.githelpers && pretty_git_log"
+la = "!git l --all"
+lr = "!git l -30"
+lra = "!git lr --all"
+lg = "!git l -G $1 -- $2"

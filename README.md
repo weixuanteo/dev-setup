@@ -1,6 +1,3 @@
-## Useful dev tools or packages to install
+## Dev Setup
 
-* tldr
-* fzf
-* tmux
-* zsh-autosuggestions (requires zsh shell)
+Quick dev setup for fresh dev environments
