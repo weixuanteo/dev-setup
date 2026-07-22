@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+source_dir="${script_dir}/skills"
+target_dir="${CLAUDE_SKILLS_DIR:-${HOME}/.claude/skills}"
+
+skills=()
+while IFS= read -r skill; do
+  skills+=("$skill")
+done < <(
+  find "$source_dir" -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/SKILL.md' \; -print \
+    | LC_ALL=C sort
+)
+
+if ((${#skills[@]} == 0)); then
+  echo "No Claude skills found in $source_dir" >&2
+  exit 1
+fi
+
+select_with_tui() {
+  local cursor=0
+  local key rest i marker pointer
+  local -a checked=()
+
+  for i in "${!skills[@]}"; do
+    checked[$i]=0
+  done
+
+  printf '\033[?25l'
+  trap 'printf "\033[?25h"' EXIT INT TERM
+
+  while true; do
+    printf '\033[H\033[2J'
+    echo "Select Claude skills"
+    echo "↑/↓ move  space toggle  a toggle all  enter install  q quit"
+    echo
+
+    for i in "${!skills[@]}"; do
+      marker='[ ]'
+      pointer=' '
+      [[ "${checked[$i]}" == 1 ]] && marker='[x]'
+      [[ "$i" == "$cursor" ]] && pointer='›'
+      printf '%s %s %s\n' "$pointer" "$marker" "$(basename -- "${skills[$i]}")"
+    done
+
+    key=''
+    IFS= read -rsn1 key || true
+    case "$key" in
+      $'\033')
+        rest=''
+        IFS= read -rsn2 rest || true
+        case "$rest" in
+          '[A') ((cursor > 0)) && ((cursor -= 1)) ;;
+          '[B') ((cursor < ${#skills[@]} - 1)) && ((cursor += 1)) ;;
+        esac
+        ;;
+      ' ')
+        if [[ "${checked[$cursor]}" == 1 ]]; then
+          checked[$cursor]=0
+        else
+          checked[$cursor]=1
+        fi
+        ;;
+      a|A)
+        local next=1
+        for i in "${!skills[@]}"; do
+          [[ "${checked[$i]}" == 0 ]] && next=1 && break
+          next=0
+        done
+        for i in "${!skills[@]}"; do
+          checked[$i]=$next
+        done
+        ;;
+      q|Q)
+        printf '\033[?25h\033[H\033[2J'
+        trap - EXIT INT TERM
+        echo "Nothing installed."
+        exit 0
+        ;;
+      '')
+        selected=()
+        for i in "${!skills[@]}"; do
+          [[ "${checked[$i]}" == 1 ]] && selected+=("${skills[$i]}")
+        done
+        printf '\033[?25h\033[H\033[2J'
+        trap - EXIT INT TERM
+        return
+        ;;
+    esac
+  done
+}
+
+select_with_prompt() {
+  local selection normalized choice index i
+
+  echo "Claude skills available to install:"
+  for i in "${!skills[@]}"; do
+    printf '  %d) %s\n' "$((i + 1))" "$(basename -- "${skills[$i]}")"
+  done
+
+  echo
+  echo "Select skills by number, separated by spaces or commas."
+  printf 'Enter "all" to install every skill, or "q" to quit: '
+  IFS= read -r selection
+
+  case "$selection" in
+    q|Q|quit|QUIT) echo "Nothing installed."; exit 0 ;;
+    all|ALL|'*') selected=("${skills[@]}") ;;
+    '') echo "No skills selected."; exit 0 ;;
+    *)
+      selected=()
+      normalized="${selection//,/ }"
+      seen_indices=" "
+      for choice in $normalized; do
+        if [[ ! "$choice" =~ ^[0-9]+$ ]] || ((choice < 1 || choice > ${#skills[@]})); then
+          echo "Invalid selection: $choice" >&2
+          exit 1
+        fi
+        index=$((choice - 1))
+        if [[ "$seen_indices" != *" $index "* ]]; then
+          selected+=("${skills[$index]}")
+          seen_indices+="$index "
+        fi
+      done
+      ;;
+  esac
+}
+
+selected=()
+if [[ -t 0 && -t 1 ]]; then
+  select_with_tui
+else
+  select_with_prompt
+fi
+
+if ((${#selected[@]} == 0)); then
+  echo "No skills selected."
+  exit 0
+fi
+
+mkdir -p -- "$target_dir"
+
+installed=0
+skipped=0
+failed=0
+
+echo
+for source_path in "${selected[@]}"; do
+  name="$(basename -- "$source_path")"
+  target_path="${target_dir}/${name}"
+
+  if [[ -L "$target_path" ]]; then
+    existing="$(readlink -- "$target_path")"
+    if [[ "$existing" == "$source_path" ]]; then
+      printf 'Already installed: %s\n' "$name"
+      ((skipped += 1))
+      continue
+    fi
+  fi
+
+  if [[ -e "$target_path" || -L "$target_path" ]]; then
+    printf 'Cannot install %s: %s already exists\n' "$name" "$target_path" >&2
+    ((failed += 1))
+    continue
+  fi
+
+  ln -s -- "$source_path" "$target_path"
+  printf 'Installed: %s -> %s\n' "$name" "$source_path"
+  ((installed += 1))
+done
+
+echo
+printf 'Done: %d installed, %d already installed, %d conflicts\n' "$installed" "$skipped" "$failed"
+
+if ((failed > 0)); then
+  exit 1
+fi
