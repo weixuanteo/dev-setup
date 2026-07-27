@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+manager_source="${script_dir}/t3code"
+env_file=""
+start_after=true
+dry_run=false
+targets=()
+
+usage() {
+  cat <<'USAGE'
+Usage: install-t3code [options] [[user@]host ...]
+
+Copy the t3code manager to remote machines over SSH, then install the
+configured T3 Code release and its per-user background service.
+
+With no hosts, the SSH aliases mac-mini and omarchy-desktop are used.
+
+Options:
+  --env FILE    Copy FILE to ~/.config/t3code/env before installation
+  --no-start    Install and register the service without starting it
+  --dry-run     Print the target hosts without connecting
+  -h, --help    Show this help
+
+Examples:
+  ./install-t3code
+  ./install-t3code --env ./t3code.env mac-mini omarchy-desktop
+  ./install-t3code user@other-host
+USAGE
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --env)
+      if (($# < 2)); then
+        printf '%s\n' '--env requires a file path' >&2
+        exit 1
+      fi
+      env_file="$2"
+      shift 2
+      ;;
+    --no-start)
+      start_after=false
+      shift
+      ;;
+    --dry-run)
+      dry_run=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      while (($# > 0)); do
+        targets+=("$1")
+        shift
+      done
+      ;;
+    -*)
+      printf 'Unknown option: %s\n' "$1" >&2
+      exit 1
+      ;;
+    *)
+      targets+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ ! -f "$manager_source" ]]; then
+  printf 'Manager script not found: %s\n' "$manager_source" >&2
+  exit 1
+fi
+if [[ -n "$env_file" && ! -f "$env_file" ]]; then
+  printf 'Environment file not found: %s\n' "$env_file" >&2
+  exit 1
+fi
+if ((${#targets[@]} == 0)); then
+  targets=(mac-mini omarchy-desktop)
+fi
+
+if [[ "$dry_run" == true ]]; then
+  printf 'Would install t3code on:\n'
+  printf '  %s\n' "${targets[@]}"
+  if [[ -n "$env_file" ]]; then
+    printf 'Using environment file: %s\n' "$env_file"
+  fi
+  exit 0
+fi
+
+failures=0
+for target in "${targets[@]}"; do
+  printf '\n==> Installing t3code manager on %s\n' "$target"
+
+  if ! ssh "$target" 'set -eu
+target_dir="${HOME}/.local/bin"
+target="${target_dir}/t3code"
+temporary="${target}.tmp.$$"
+trap '\''rm -f "$temporary"'\'' EXIT HUP INT TERM
+mkdir -p "$target_dir"
+cat >"$temporary"
+chmod 755 "$temporary"
+mv "$temporary" "$target"
+trap - EXIT HUP INT TERM
+' <"$manager_source"; then
+    printf 'Failed to copy the manager to %s\n' "$target" >&2
+    failures=$((failures + 1))
+    continue
+  fi
+
+  if [[ -n "$env_file" ]]; then
+    printf '    Copying environment settings\n'
+    if ! ssh "$target" 'set -eu
+config_dir="${HOME}/.config/t3code"
+target="${config_dir}/env"
+temporary="${target}.tmp.$$"
+trap '\''rm -f "$temporary"'\'' EXIT HUP INT TERM
+mkdir -p "$config_dir"
+cat >"$temporary"
+chmod 600 "$temporary"
+mv "$temporary" "$target"
+trap - EXIT HUP INT TERM
+' <"$env_file"; then
+      printf 'Failed to copy the environment file to %s\n' "$target" >&2
+      failures=$((failures + 1))
+      continue
+    fi
+  fi
+
+  printf '    Installing the nightly package and service\n'
+  if [[ "$start_after" == true ]]; then
+    remote_command='"${HOME}/.local/bin/t3code" install'
+  else
+    remote_command='"${HOME}/.local/bin/t3code" install --no-start'
+  fi
+  if ! ssh "$target" "$remote_command"; then
+    printf 'Installation failed on %s\n' "$target" >&2
+    failures=$((failures + 1))
+    continue
+  fi
+
+  printf 'Installed successfully on %s\n' "$target"
+done
+
+printf '\nDone: %d succeeded, %d failed\n' "$((${#targets[@]} - failures))" "$failures"
+if ((failures > 0)); then
+  exit 1
+fi
