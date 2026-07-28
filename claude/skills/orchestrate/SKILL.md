@@ -28,9 +28,9 @@ This step is complete when every assignment is routed.
 
 Run Claude models through the Agent or Workflow model parameter.
 
-OpenAI models are reachable through Codex CLI, not the Agent model parameter. For delegated OpenAI work, spawn a Claude bridge using `model: opus` and `effort: low` with this contract:
+- `opus-5` runs at medium reasoning effort only. With the Agent tool, dispatch it as `subagent_type: opus-worker` (its definition pins `model: opus` and `effort: medium`) and do not pass a `model` override. In Workflow scripts, pass `model: 'opus', effort: 'medium'` to `agent()`. Never raise opus-5 above medium.
 
-> Act only as a Codex bridge. Invoke the routed Codex skill or command with the framed assignment, then return its result or failure. Do not perform the assignment yourself.
+OpenAI models are reachable through Codex CLI, not the Agent model parameter. For delegated OpenAI work, spawn a bridge as `subagent_type: codex-bridge` without a `model` override (its definition pins `model: opus` and `effort: low`, and its contract is to only relay the assignment to Codex and return the result).
 
 - `gpt-5.6-sol` is the default in `~/.codex/config.toml`; omit the model option.
 - Use `codex-implementation` for implementation and `codex-review` for code review.

@@ -5,6 +5,11 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source_dir="${script_dir}/skills"
 target_dir="${CLAUDE_SKILLS_DIR:-${HOME}/.claude/skills}"
+agents_source_dir="${script_dir}/agents"
+agents_target_dir="${CLAUDE_AGENTS_DIR:-${HOME}/.claude/agents}"
+
+# Skills that depend on the agent definitions in claude/agents.
+agent_dependent_skills=(orchestrate)
 
 skills=()
 while IFS= read -r skill; do
@@ -128,6 +133,39 @@ select_with_prompt() {
   esac
 }
 
+install_agents() {
+  local agent_path name target_path
+
+  if [[ ! -d "$agents_source_dir" ]]; then
+    echo "No Claude agents found in $agents_source_dir" >&2
+    ((failed += 1))
+    return
+  fi
+
+  mkdir -p -- "$agents_target_dir"
+
+  for agent_path in "$agents_source_dir"/*.md; do
+    [[ -e "$agent_path" ]] || continue
+    name="$(basename -- "$agent_path")"
+    target_path="${agents_target_dir}/${name}"
+
+    if [[ -e "$target_path" || -L "$target_path" ]]; then
+      if [[ "$(realpath -- "$target_path" 2>/dev/null)" == "$(realpath -- "$agent_path")" ]]; then
+        printf 'Already installed agent: %s\n' "$name"
+        ((skipped += 1))
+      else
+        printf 'Cannot install agent %s: %s already exists\n' "$name" "$target_path" >&2
+        ((failed += 1))
+      fi
+      continue
+    fi
+
+    ln -s -- "$agent_path" "$target_path"
+    printf 'Installed agent: %s -> %s\n' "$name" "$agent_path"
+    ((installed += 1))
+  done
+}
+
 selected=()
 if [[ -t 0 && -t 1 ]]; then
   select_with_tui
@@ -169,6 +207,16 @@ for source_path in "${selected[@]}"; do
   ln -s -- "$source_path" "$target_path"
   printf 'Installed: %s -> %s\n' "$name" "$source_path"
   ((installed += 1))
+done
+
+for source_path in "${selected[@]}"; do
+  name="$(basename -- "$source_path")"
+  for dependent in "${agent_dependent_skills[@]}"; do
+    if [[ "$name" == "$dependent" ]]; then
+      install_agents
+      break 2
+    fi
+  done
 done
 
 echo
