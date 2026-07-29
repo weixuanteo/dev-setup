@@ -73,6 +73,12 @@ T3
 fi
 NPM
 
+cat >"${fake_bin}/npx" <<'NPX'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"${T3CODE_TEST_NPX_ARGS}"
+printf '%s\n' "${T3CODE_HOME:-}" >"${T3CODE_TEST_NPX_HOME}"
+NPX
+
 cat >"${fake_bin}/loginctl" <<'LOGINCTL'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"${T3CODE_TEST_COMMANDS}"
@@ -81,12 +87,14 @@ if [[ "$*" == *"show-user"* ]]; then
 fi
 LOGINCTL
 
-chmod +x "${fake_bin}/systemctl" "${fake_bin}/launchctl" "${fake_bin}/npm" "${fake_bin}/loginctl"
+chmod +x "${fake_bin}/systemctl" "${fake_bin}/launchctl" "${fake_bin}/npm" "${fake_bin}/npx" "${fake_bin}/loginctl"
 
 export HOME="$fake_home"
 export PATH="${fake_bin}:${PATH}"
 export T3CODE_TEST_COMMANDS="${test_root}/commands"
 export T3CODE_TEST_T3_ARGS="${test_root}/t3-args"
+export T3CODE_TEST_NPX_ARGS="${test_root}/npx-args"
+export T3CODE_TEST_NPX_HOME="${test_root}/npx-home"
 : >"$T3CODE_TEST_COMMANDS"
 
 "${repo_dir}/t3code" help >"${test_root}/help"
@@ -95,6 +103,7 @@ assert_contains "${test_root}/help" "update"
 assert_contains "${test_root}/help" "restart"
 assert_contains "${test_root}/help" "pair"
 assert_contains "${test_root}/help" "session"
+assert_contains "${test_root}/help" "connect"
 
 T3CODE_TEST_OS=Linux "${repo_dir}/t3code" install --no-start >"${test_root}/install"
 assert_contains "${test_root}/install" "Installed T3 Code 0.0.99-nightly.test."
@@ -144,6 +153,16 @@ T3CODE_TEST_OS=Linux "${repo_dir}/t3code" session revoke test-session-id
 assert_contains "$T3CODE_TEST_T3_ARGS" "session"
 assert_contains "$T3CODE_TEST_T3_ARGS" "revoke"
 assert_contains "$T3CODE_TEST_T3_ARGS" "test-session-id"
+
+cp "${fake_home}/.config/t3code/env" "${test_root}/connect.env"
+printf 'T3CODE_BASE_DIR="%s"\n' "${fake_home}/t3-data" >>"${test_root}/connect.env"
+T3CODE_CONFIG_FILE="${test_root}/connect.env" T3CODE_TEST_OS=Linux \
+  "${repo_dir}/t3code" connect status --json
+assert_contains "$T3CODE_TEST_NPX_ARGS" "t3"
+assert_contains "$T3CODE_TEST_NPX_ARGS" "connect"
+assert_contains "$T3CODE_TEST_NPX_ARGS" "status"
+assert_contains "$T3CODE_TEST_NPX_ARGS" "--json"
+assert_contains "$T3CODE_TEST_NPX_HOME" "${fake_home}/t3-data"
 
 T3CODE_TEST_OS=Darwin "${repo_dir}/t3code" start >"${test_root}/mac-start"
 assert_contains "${fake_home}/Library/LaunchAgents/dev.devsetup.t3code.plist" "<string>_serve</string>"

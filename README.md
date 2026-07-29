@@ -97,6 +97,26 @@ Session listings never reveal bearer tokens. An active session is an
 authorized client and is not necessarily a client with a live connection at
 that exact moment.
 
+Set up T3 Connect on a remote server with an interactive SSH session:
+
+```bash
+ssh -t mac-mini ~/.local/bin/t3code connect
+```
+
+The command runs the current `npx t3 connect` setup wizard. Additional
+arguments are forwarded to the T3 CLI, so non-interactive management commands
+also work:
+
+```bash
+ssh mac-mini ~/.local/bin/t3code connect status
+ssh -t mac-mini ~/.local/bin/t3code connect link --headless
+ssh mac-mini ~/.local/bin/t3code connect unlink
+```
+
+When `T3CODE_BASE_DIR` is configured, the helper exposes it to T3 Connect as
+`T3CODE_HOME` so the setup and the managed server use the same T3 Code data
+directory.
+
 After opening an interactive SSH session, use `t3code` directly when
 `~/.local/bin` is on that machine's `PATH`; otherwise use the full path shown
 above.
