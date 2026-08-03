@@ -36,6 +36,31 @@ SYSTEMCTL
 cat >"${fake_bin}/launchctl" <<'LAUNCHCTL'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"${T3CODE_TEST_COMMANDS}"
+if [[ -n "${T3CODE_TEST_LAUNCHD_STATE:-}" ]]; then
+  case "${1:-}" in
+    print)
+      if [[ "${2:-}" == */dev.devsetup.t3code ]] && [[ "$(<"${T3CODE_TEST_LAUNCHD_STATE}")" == "running" ]]; then
+        printf 'state = running\n'
+        exit 0
+      fi
+      if [[ "${2:-}" =~ ^(gui|user)/[0-9]+$ ]]; then
+        exit 0
+      fi
+      exit 1
+      ;;
+    bootout)
+      printf 'stopped\n' >"${T3CODE_TEST_LAUNCHD_STATE}"
+      if [[ "${T3CODE_TEST_BOOTOUT_KILLS_CALLER:-false}" == "true" ]]; then
+        kill -TERM "$PPID"
+      fi
+      exit 0
+      ;;
+    bootstrap|kickstart)
+      printf 'running\n' >"${T3CODE_TEST_LAUNCHD_STATE}"
+      exit 0
+      ;;
+  esac
+fi
 if [[ "${1:-}" == "print" ]]; then
   exit 1
 fi
@@ -167,6 +192,15 @@ assert_contains "$T3CODE_TEST_NPX_HOME" "${fake_home}/t3-data"
 T3CODE_TEST_OS=Darwin "${repo_dir}/t3code" start >"${test_root}/mac-start"
 assert_contains "${fake_home}/Library/LaunchAgents/dev.devsetup.t3code.plist" "<string>_serve</string>"
 assert_contains "$T3CODE_TEST_COMMANDS" "bootstrap gui/"
+
+launchd_state="${test_root}/launchd-state"
+printf 'running\n' >"$launchd_state"
+if ! T3CODE_TEST_BOOTOUT_KILLS_CALLER=true T3CODE_TEST_LAUNCHD_STATE="$launchd_state" T3CODE_TEST_OS=Darwin \
+  "${repo_dir}/t3code" restart >"${test_root}/mac-restart"; then
+  fail "macOS restart should start a service after stopping it"
+fi
+assert_contains "${test_root}/mac-restart" "T3 Code restarted."
+assert_contains "$launchd_state" "running"
 
 "${repo_dir}/install-t3code" --dry-run >"${test_root}/dry-run"
 assert_contains "${test_root}/dry-run" "mac-mini"

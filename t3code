@@ -368,6 +368,18 @@ stop_service() {
   fi
 }
 
+restart_service() {
+  if [[ "$PLATFORM" == "macos" ]]; then
+    # launchctl bootout terminates every process owned by the job, which can
+    # include this helper when restart is invoked from a T3 Code session.
+    # start_service uses kickstart -k for a loaded job and bootstrap otherwise.
+    start_service
+  else
+    stop_service
+    start_service
+  fi
+}
+
 enable_linux_linger() {
   local login_user linger_state
   if [[ "$PLATFORM" != "linux" ]]; then
@@ -948,8 +960,7 @@ case "$command_name" in
     load_config
     [[ -x "$T3_BIN" ]] || { printf 'T3 Code is not installed; run: t3code install\n' >&2; exit 1; }
     require_node
-    stop_service
-    start_service
+    restart_service
     printf 'T3 Code restarted.\n'
     ;;
   pair) pair_command "$@" ;;
