@@ -14,12 +14,10 @@ Rankings are personal defaults; higher is better. Cost reflects effective subscr
 | model | cost | intelligence | taste |
 |---|---:|---:|---:|
 | `gpt-5.6-sol` | 8 | 9 | 7 |
-| `opus-5` | 4 | 8 | 8 |
 | `fable-5` | 2 | 10 | 9 |
 
 - Route coding, research, science, computer use, cybersecurity, data analysis, and other long-horizon work to `gpt-5.6-sol`.
-- Route long-horizon coding and agentic work that runs natively through the Agent or Workflow tools — especially subagent-heavy fan-outs and writer-verifier workflows — to `opus-5`; it needs no Codex bridge and coordinates parallel subagents reliably.
-- Route plan or implementation review to `fable-5`; add `opus-5` or `gpt-5.6-sol` when another independent perspective is valuable. A reviewer must not be the model that produced the work.
+- Route plan or implementation review to `fable-5`; add `gpt-5.6-sol` when another independent perspective is valuable. A reviewer must not be the model that produced the work.
 - Never use Haiku.
 
 This step is complete when every assignment is routed.
@@ -27,8 +25,6 @@ This step is complete when every assignment is routed.
 ## 3. Dispatch
 
 Run Claude models through the Agent or Workflow model parameter.
-
-- `opus-5` runs at medium reasoning effort only. With the Agent tool, dispatch it as `subagent_type: opus-worker` (its definition pins `model: opus` and `effort: medium`) and do not pass a `model` override. In Workflow scripts, pass `model: 'opus', effort: 'medium'` to `agent()`. Never raise opus-5 above medium.
 
 OpenAI models are reachable through Codex CLI, not the Agent model parameter. For delegated OpenAI work, spawn a bridge as `subagent_type: codex-bridge` without a `model` override (its definition pins `model: opus` and `effort: low`, and its contract is to only relay the assignment to Codex and return the result).
 
