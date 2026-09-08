@@ -13,11 +13,11 @@ Rankings are personal defaults; higher is better. Cost reflects effective subscr
 
 | model | cost | intelligence | taste |
 |---|---:|---:|---:|
-| `gpt-5.6-sol` | 8 | 9 | 7 |
-| `fable-5` | 2 | 10 | 9 |
+| `gpt-6-astra` | 8 | 9 | 7 |
+| `fable-5.1` | 2 | 10 | 9 |
 
-- Route coding, research, science, computer use, cybersecurity, data analysis, and other long-horizon work to `gpt-5.6-sol`.
-- Route plan or implementation review to `fable-5`; add `gpt-5.6-sol` when another independent perspective is valuable. A reviewer must not be the model that produced the work.
+- Route coding, research, science, computer use, cybersecurity, data analysis, and other long-horizon work to `gpt-6-astra`.
+- Route plan or implementation review to `fable-5.1`; add `gpt-6-astra` when another independent perspective is valuable. A reviewer must not be the model that produced the work.
 - Never use Haiku.
 
 This step is complete when every assignment is routed.
@@ -28,7 +28,7 @@ Run Claude models through the Agent or Workflow model parameter.
 
 OpenAI models are reachable through Codex CLI, not the Agent model parameter. For delegated OpenAI work, spawn a bridge as `subagent_type: codex-bridge` without a `model` override (its definition pins `model: opus` and `effort: low`, and its contract is to only relay the assignment to Codex and return the result).
 
-- `gpt-5.6-sol` is the default in `~/.codex/config.toml`; omit the model option.
+- `gpt-6-astra` with `medium` reasoning effort is the default in `~/.codex/config.toml`; omit model and reasoning-effort overrides unless the assignment requires them.
 - Use `codex-implementation` for implementation and `codex-review` for code review.
 - Use `codex exec -C <working-directory> -s read-only -` for investigation, analysis, and other non-mutating work.
 - Use `danger-full-access` only when the assignment explicitly requires access beyond the workspace and that access is authorized.
