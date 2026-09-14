@@ -130,17 +130,32 @@ assert_contains "${test_root}/help" "pair"
 assert_contains "${test_root}/help" "session"
 assert_contains "${test_root}/help" "connect"
 
+# Simulate a leftover from a previous release. The t3 platform package bundles
+# undeclared native dependencies, so every install must build a fresh tree
+# instead of running npm over the existing one (which prunes them).
+mkdir -p "${fake_home}/.local/share/t3code/node_modules/stale-package"
+
 T3CODE_TEST_OS=Linux "${repo_dir}/t3code" install --no-start >"${test_root}/install"
 assert_contains "${test_root}/install" "Installed T3 Code 0.0.99-nightly.test."
 assert_contains "$T3CODE_TEST_COMMANDS" "t3@0.0.99-nightly.test"
-assert_contains "$T3CODE_TEST_COMMANDS" "rebuild"
+if grep -q "rebuild" "$T3CODE_TEST_COMMANDS"; then
+  fail "install should not run npm rebuild; native dependencies ship pre-built"
+fi
+if grep -q -- "--prefix ${fake_home}/.local/share/t3code " "$T3CODE_TEST_COMMANDS"; then
+  fail "install should stage into a fresh tree, not npm install over the data dir"
+fi
+[[ -x "${fake_home}/.local/share/t3code/node_modules/.bin/t3" ]] || fail "install should move the staged tree into place"
+[[ ! -e "${fake_home}/.local/share/t3code/node_modules/stale-package" ]] || fail "install should replace the previous node_modules tree"
+[[ -z "$(ls -A "${fake_home}/.local/share/t3code" | grep '^\.staging\.\|^\.previous\.')" ]] || fail "install should clean up staging directories"
 assert_contains "${fake_home}/.config/systemd/user/t3code.service" 'ExecStart="%h/.local/bin/t3code" _serve'
-assert_contains "${fake_home}/.local/share/t3code/package.json" '"node-pty": true'
+assert_contains "${fake_home}/.local/share/t3code/package.json" '"private": true'
 
 if T3CODE_TEST_NPM_FAIL=true T3CODE_TEST_OS=Linux "${repo_dir}/t3code" update >"${test_root}/failed-update" 2>&1; then
   fail "update should report an npm installation failure"
 fi
 assert_contains "${test_root}/failed-update" "Failed to install t3@0.0.99-nightly.test."
+[[ -x "${fake_home}/.local/share/t3code/node_modules/.bin/t3" ]] || fail "a failed update should keep the previous installation"
+[[ -z "$(ls -A "${fake_home}/.local/share/t3code" | grep '^\.staging\.\|^\.previous\.')" ]] || fail "a failed update should clean up staging directories"
 
 T3CODE_TEST_OS=Linux "${repo_dir}/t3code" _serve
 assert_contains "$T3CODE_TEST_T3_ARGS" "serve"

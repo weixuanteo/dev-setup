@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-readonly T3CODE_MANAGER_VERSION="1.1.0"
+readonly T3CODE_MANAGER_VERSION="1.2.0"
 readonly SERVICE_NAME="t3code"
 readonly LAUNCHD_LABEL="dev.devsetup.t3code"
 
@@ -478,27 +478,19 @@ installed_version() {
 }
 
 write_runtime_package_json() {
-  # npm 12 blocks dependency install scripts by default. T3 Code uses these
-  # two native dependencies for terminal and message-pack support, so approve
-  # only their lifecycle scripts instead of disabling npm's policy globally.
-  cat >"${DATA_DIR}/package.json" <<'PACKAGE_JSON'
+  cat >"$1" <<'PACKAGE_JSON'
 {
   "name": "t3code-managed-runtime",
-  "private": true,
-  "allowScripts": {
-    "msgpackr-extract": true,
-    "node-pty": true
-  }
+  "private": true
 }
 PACKAGE_JSON
 }
 
 install_package() {
-  local version_json resolved_version exact_spec
+  local version_json resolved_version exact_spec stage stage_bin previous
   load_config
   require_node
   mkdir -p "$DATA_DIR"
-  write_runtime_package_json
 
   printf 'Resolving %s...\n' "$T3CODE_PACKAGE"
   if ! version_json="$(npm view "$T3CODE_PACKAGE" version --json)"; then
@@ -521,46 +513,64 @@ install_package() {
     return 1
   fi
 
+  # The t3 platform package ships its native dependencies (node-pty,
+  # msgpackr-extract, fff-node, ...) pre-built inside its own node_modules
+  # without declaring them in package.json. Running npm over an existing tree
+  # treats them as extraneous and prunes them, which leaves the t3 binary
+  # unable to start. Always install into a fresh staging tree and swap it in
+  # only after the binary has been verified, so a failed update keeps the
+  # previous installation intact.
+  stage="${DATA_DIR}/.staging.$$"
+  stage_bin="${stage}/node_modules/.bin/t3"
+  rm -rf "$stage"
+  mkdir -p "$stage"
+  write_runtime_package_json "${stage}/package.json"
+
   exact_spec="t3@${resolved_version}"
   printf 'Installing %s...\n' "$exact_spec"
   if ! npm install \
-    --prefix "$DATA_DIR" \
+    --prefix "$stage" \
     --no-save \
     --no-package-lock \
     --omit=dev \
     "$exact_spec"; then
     printf 'Failed to install %s.\n' "$exact_spec" >&2
-    return 1
-  fi
-
-  # Re-run the approved native setup when the manager is added to an existing
-  # npm tree or the host changes Node versions. In particular, node-pty's
-  # macOS spawn helper needs its install script to set executable permissions.
-  if ! npm rebuild \
-    --prefix "$DATA_DIR" \
-    node-pty \
-    msgpackr-extract; then
-    printf 'Failed to prepare T3 Code native dependencies.\n' >&2
+    rm -rf "$stage"
     return 1
   fi
 
   if [[ "$PLATFORM" == "macos" ]]; then
-    local node_pty_arch spawn_helper
-    case "$(uname -m)" in
-      arm64) node_pty_arch="arm64" ;;
-      x86_64) node_pty_arch="x64" ;;
-      *) node_pty_arch="" ;;
-    esac
-    spawn_helper="${DATA_DIR}/node_modules/node-pty/prebuilds/darwin-${node_pty_arch}/spawn-helper"
-    if [[ -n "$node_pty_arch" && -f "$spawn_helper" ]]; then
-      chmod 755 "$spawn_helper"
-    fi
+    # node-pty's macOS spawn helper must stay executable; npm does not run
+    # install scripts for bundled dependencies, so restore it explicitly.
+    find "${stage}/node_modules/@t3code" -type f -name spawn-helper -exec chmod 755 {} + 2>/dev/null || true
   fi
 
-  if [[ ! -x "$T3_BIN" ]]; then
-    printf 'Installation finished without creating %s\n' "$T3_BIN" >&2
+  if [[ ! -x "$stage_bin" ]]; then
+    printf 'Installation finished without creating %s\n' "$stage_bin" >&2
+    rm -rf "$stage"
     return 1
   fi
+  if ! "$stage_bin" --version >/dev/null 2>&1; then
+    printf 'Installed %s but its binary fails to start; keeping the previous installation.\n' "$exact_spec" >&2
+    "$stage_bin" --version 2>&1 | sed 's/^/    /' >&2 || true
+    rm -rf "$stage"
+    return 1
+  fi
+
+  previous="${DATA_DIR}/.previous.$$"
+  rm -rf "$previous"
+  if [[ -d "${DATA_DIR}/node_modules" ]]; then
+    mv "${DATA_DIR}/node_modules" "$previous"
+  fi
+  if ! mv "${stage}/node_modules" "${DATA_DIR}/node_modules"; then
+    printf 'Failed to move the new installation into place.\n' >&2
+    [[ -d "$previous" ]] && mv "$previous" "${DATA_DIR}/node_modules"
+    rm -rf "$stage"
+    return 1
+  fi
+  mv -f "${stage}/package.json" "${DATA_DIR}/package.json"
+  rm -rf "$stage" "$previous"
+
   printf 'Installed T3 Code %s.\n' "$(installed_version)"
 }
 
