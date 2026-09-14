@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-readonly T3CODE_MANAGER_VERSION="1.2.0"
+readonly T3CODE_MANAGER_VERSION="1.3.0"
 readonly SERVICE_NAME="t3code"
 readonly LAUNCHD_LABEL="dev.devsetup.t3code"
 
@@ -47,7 +47,7 @@ Commands:
   pair revoke <id>      Revoke an active pairing credential
   session [list]        List authorized client sessions
   session revoke <id>   Revoke an authorized client session
-  connect [args]        Set up or manage T3 Connect through npx
+  connect [args]        Set up or manage T3 Connect
   logs [-f]             Show the last 100 log lines (and optionally follow)
   version               Show manager and installed T3 Code versions
   config                Create, then print, the environment file path
@@ -873,21 +873,19 @@ SESSION_USAGE
 }
 
 connect_command() {
-  local args
-
   load_config
   require_node
-  if ! command -v npx >/dev/null 2>&1; then
-    printf 'npx was not found. Install it with npm, then retry.\n' >&2
+  if [[ ! -x "$T3_BIN" ]]; then
+    printf 'T3 Code is not installed; run: t3code install\n' >&2
     exit 1
   fi
 
+  # Use the installed release so the T3 Connect CLI and the running server
+  # are always the same version.
   if [[ -n "$T3CODE_BASE_DIR" ]]; then
     export T3CODE_HOME="$T3CODE_BASE_DIR"
   fi
-  args=(t3 connect "$@")
-
-  exec npx "${args[@]}"
+  exec "$T3_BIN" connect "$@"
 }
 
 uninstall_command() {

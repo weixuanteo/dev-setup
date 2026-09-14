@@ -103,9 +103,9 @@ Set up T3 Connect on a remote server with an interactive SSH session:
 ssh -t mac-mini ~/.local/bin/t3code connect
 ```
 
-The command runs the current `npx t3 connect` setup wizard. Additional
-arguments are forwarded to the T3 CLI, so non-interactive management commands
-also work:
+The command runs the installed release's `t3 connect` setup wizard, so the CLI
+always matches the running server. Additional arguments are forwarded to the T3
+CLI, so non-interactive management commands also work:
 
 ```bash
 ssh mac-mini ~/.local/bin/t3code connect status
